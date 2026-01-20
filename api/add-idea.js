@@ -67,23 +67,15 @@ module.exports = async (req, res) => {
       });
     }
 
-    // 使用Service Role Key绕过RLS限制
-    // 注意：生产环境中应该使用更安全的认证方式
-    const serviceRoleKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InducnJlbHljaGpwa2J6d3luZmthIiwicm9sZSI6InNlcnZpY2UiLCJpYXQiOjE3Njg5MjM1ODcsImV4cCI6MjA4NDQ5OTU4N30.aYVK_vZp7Gn9Uq0TJQkN7V7U_kS5oKHWcG9qKq8mNK0';
-    const supabaseService = createClient(supabaseUrl, serviceRoleKey);
-
-    // 插入数据到数据库（使用Service Role）
-    const { data, error } = await supabaseService
-      .from('inspiration_cards')
-      .insert({
-        user_id: DEFAULT_USER_ID,
-        title: content.trim(),
-        content: null, // 快捷指令只传入标题
-        category: category,
-        image_url: imageUrl || null,
-      })
-      .select()
-      .single();
+    // 创建一个临时的RLS绕过策略
+    // 注意：这是一个临时解决方案，生产环境需要更好的API认证
+    const { data, error } = await supabase.rpc('insert_card_for_api', {
+      p_user_id: DEFAULT_USER_ID,
+      p_title: content.trim(),
+      p_content: null,
+      p_category: category,
+      p_image_url: imageUrl || null
+    });
 
     if (error) {
       console.error('Database error:', error);
