@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase, Database } from '../supabase';
 import { InspirationCard } from '../types';
 
@@ -8,71 +8,18 @@ export const useSupabaseCards = () => {
   const [cards, setCards] = useState<InspirationCard[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [initialized, setInitialized] = useState(false);
   const [user, setUser] = useState<any>(null);
-
-  // 获取当前认证状态和卡片数据
-  useEffect(() => {
-    // 只在组件初始化时执行一次
-    const initializeData = async () => {
-      try {
-        // 获取当前会话
-        const { data: { session } } = await supabase.auth.getSession();
-        const currentUser = session?.user ?? null;
-        setUser(currentUser);
-        setInitialized(true);
-
-        if (currentUser) {
-          console.log('Initial auth - user found:', currentUser.id);
-          // 用户已登录，获取卡片
-          await fetchCardsForUser(currentUser.id);
-        } else {
-          console.log('Initial auth - no user found');
-          // 用户未登录，设置初始状态
-          setCards([]);
-          setLoading(false);
-          setError(null);
-        }
-      } catch (error) {
-        console.error('Initialization error:', error);
-        setCards([]);
-        setLoading(false);
-        setError('初始化失败，请刷新页面');
-        setInitialized(true);
-      }
-    };
-
-    initializeData();
-
-    // 监听认证状态变化
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        const currentUser = session?.user ?? null;
-        console.log('Auth state changed:', event, currentUser?.email);
-        setUser(currentUser);
-        
-        if (currentUser && initialized) {
-          // 用户登录且已初始化，获取卡片
-          await fetchCardsForUser(currentUser.id);
-        } else if (!currentUser) {
-          // 用户登出，清空数据
-          setCards([]);
-          setLoading(false);
-          setError(null);
-        }
-      }
-    );
-
-    return () => {
-      console.log('Cleaning up auth subscription');
-      subscription.unsubscribe();
-    };
-  }, [initialized]);
+  const [loadingCards, setLoadingCards] = useState(false);
 
   // 获取用户卡片
-  const fetchCardsForUser = async (userId: string) => {
+  const fetchCardsForUser = useCallback(async (userId: string) => {
+    if (loadingCards) {
+      console.log('Cards loading in progress, skipping...');
+      return;
+    }
+    
     try {
-      setLoading(true);
+      setLoadingCards(true);
       setError(null);
 
       const { data, error } = await supabase
@@ -102,23 +49,70 @@ export const useSupabaseCards = () => {
       setError('获取数据失败: ' + err.message);
       setCards([]);
     } finally {
+      setLoadingCards(false);
       setLoading(false);
     }
-  };
+  }, [loadingCards]);
 
-  // 向后兼容的函数
-  const fetchCards = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      await fetchCardsForUser(user.id);
-    }
-  };
+  // 获取当前认证状态和卡片数据
+  useEffect(() => {
+    let isSubscribed = true;
+    
+    const initializeData = async () => {
+      if (!isSubscribed) return;
+      
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const currentUser = session?.user ?? null;
+        setUser(currentUser);
+
+        if (currentUser) {
+          console.log('Initial auth - user found:', currentUser.id);
+          await fetchCardsForUser(currentUser.id);
+        } else {
+          console.log('Initial auth - no user found');
+          setCards([]);
+          setLoading(false);
+          setError(null);
+        }
+      } catch (error) {
+        console.error('Initialization error:', error);
+        setCards([]);
+        setLoading(false);
+        setError('初始化失败，请刷新页面');
+      }
+    };
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (!isSubscribed) return;
+        
+        const currentUser = session?.user ?? null;
+        console.log('Auth state changed:', event, currentUser?.email);
+        setUser(currentUser);
+        
+        if (currentUser) {
+          await fetchCardsForUser(currentUser.id);
+        } else {
+          setCards([]);
+          setLoading(false);
+          setError(null);
+        }
+      }
+    );
+
+    initializeData();
+
+    return () => {
+      console.log('Cleaning up auth subscription');
+      isSubscribed = false;
+      subscription.unsubscribe();
+    };
+  }, [fetchCardsForUser]);
 
   // 添加新卡片
   const addCard = async (newCard: Omit<InspirationCard, 'id' | 'timestamp'>) => {
     try {
-      if (!user) throw new Error('用户未登录');
-
       const { data, error } = await supabase
         .from('inspiration_cards')
         .insert({
@@ -132,18 +126,7 @@ export const useSupabaseCards = () => {
         .single();
 
       if (error) throw error;
-
-      const transformedCard: InspirationCard = {
-        id: data.id,
-        title: data.title,
-        content: data.content || undefined,
-        category: data.category,
-        imageUrl: data.image_url || undefined,
-        timestamp: new Date(data.created_at),
-      };
-
-      setCards(prev => [transformedCard, ...prev]);
-      return transformedCard;
+      return data;
     } catch (err: any) {
       setError(err.message);
       console.error('Error adding card:', err);
@@ -165,42 +148,6 @@ export const useSupabaseCards = () => {
     } catch (err: any) {
       setError(err.message);
       console.error('Error deleting card:', err);
-      throw err;
-    }
-  };
-
-  // 更新卡片
-  const updateCard = async (id: string, updates: Partial<InspirationCard>) => {
-    try {
-      const updateData: any = {};
-      if (updates.title) updateData.title = updates.title;
-      if (updates.content !== undefined) updateData.content = updates.content || null;
-      if (updates.category) updateData.category = updates.category;
-      if (updates.imageUrl !== undefined) updateData.image_url = updates.imageUrl || null;
-
-      const { data, error } = await supabase
-        .from('inspiration_cards')
-        .update(updateData)
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      const transformedCard: InspirationCard = {
-        id: data.id,
-        title: data.title,
-        content: data.content || undefined,
-        category: data.category,
-        imageUrl: data.image_url || undefined,
-        timestamp: new Date(data.created_at),
-      };
-
-      setCards(prev => prev.map(card => card.id === id ? transformedCard : card));
-      return transformedCard;
-    } catch (err: any) {
-      setError(err.message);
-      console.error('Error updating card:', err);
       throw err;
     }
   };
@@ -231,13 +178,6 @@ export const useSupabaseCards = () => {
       });
 
       if (error) throw error;
-      
-      // 注册成功后自动登录
-      if (data.user && !data.session) {
-        // 邮件验证需要的情况
-        throw new Error('注册成功，请检查邮箱并点击验证链接');
-      }
-      
       return data;
     } catch (err: any) {
       setError(err.message);
@@ -265,10 +205,8 @@ export const useSupabaseCards = () => {
     user,
     addCard,
     deleteCard,
-    updateCard,
     signIn,
     signUp,
     signOut,
-    fetchCards,
   };
 };
