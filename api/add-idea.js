@@ -5,8 +5,8 @@ const supabaseUrl = 'https://wnrrelychjpkbzwynfka.supabase.co';
 const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InducnJlbHljaGpwa2J6d3luZmthIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg5MjM1ODcsImV4cCI6MjA4NDQ5OTU4N30.U3Fpok1IMJ1hwXxpGwISbtwXlPtWhagX0K5mPxMa7B8';
 const apiAuthToken = 'linggan_api_secret_token_2026_yishuai';
 
-// 临时硬编码用户ID（你需要替换为你的实际用户ID）
-const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000000'; // 请替换为实际用户ID！
+// 用户ID
+const DEFAULT_USER_ID = 'ed6bc139-d7dd-4a4d-8450-6b6570e543c8';
 
 // 初始化Supabase客户端
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
