@@ -1,14 +1,23 @@
 import React from 'react';
-import { Search, MoreHorizontal, Sun, Moon } from 'lucide-react';
+import { Search, MoreHorizontal, Sun, Moon, LogOut, User as UserIcon } from 'lucide-react';
 import { CATEGORIES } from '../types';
 import { useTheme } from '../contexts/ThemeContext';
 
 interface HeaderProps {
   selectedCategory: string;
   onCategoryChange: (categoryId: string) => void;
+  user: any;
+  onLogin: () => void;
+  onLogout: () => void;
 }
 
-const Header: React.FC<HeaderProps> = ({ selectedCategory, onCategoryChange }) => {
+const Header: React.FC<HeaderProps> = ({ 
+  selectedCategory, 
+  onCategoryChange, 
+  user, 
+  onLogin, 
+  onLogout 
+}) => {
   const { theme, toggleTheme } = useTheme();
 
   return (
@@ -29,6 +38,31 @@ const Header: React.FC<HeaderProps> = ({ selectedCategory, onCategoryChange }) =
               <Sun className="w-5 h-5 text-slate-600 dark:text-slate-400" />
             )}
           </button>
+          {user ? (
+            <div className="flex items-center gap-2">
+              <div className="hidden sm:flex items-center gap-2 px-2 py-1 bg-slate-100 dark:bg-slate-700 rounded-full">
+                <UserIcon className="w-4 h-4 text-slate-600 dark:text-slate-400" />
+                <span className="text-xs text-slate-600 dark:text-slate-400 truncate max-w-20">
+                  {user.email}
+                </span>
+              </div>
+              <button 
+                onClick={onLogout}
+                className="p-2 rounded-full hover:bg-white/50 dark:hover:bg-white/10 transition-colors"
+                title="退出登录"
+              >
+                <LogOut className="w-5 h-5 text-slate-600 dark:text-slate-400" />
+              </button>
+            </div>
+          ) : (
+            <button 
+              onClick={onLogin}
+              className="p-2 rounded-full hover:bg-white/50 dark:hover:bg-white/10 transition-colors"
+              title="登录"
+            >
+              <UserIcon className="w-5 h-5 text-slate-600 dark:text-slate-400" />
+            </button>
+          )}
           <button className="p-2 rounded-full hover:bg-white/50 dark:hover:bg-white/10 transition-colors">
             <MoreHorizontal className="w-5 h-5 text-slate-600 dark:text-slate-400" />
           </button>
