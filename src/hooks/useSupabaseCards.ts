@@ -8,21 +8,26 @@ export const useSupabaseCards = () => {
   const [cards, setCards] = useState<InspirationCard[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [initialized, setInitialized] = useState(false);
   const [user, setUser] = useState<any>(null);
 
   // 获取当前认证状态和卡片数据
   useEffect(() => {
+    // 只在组件初始化时执行一次
     const initializeData = async () => {
       try {
         // 获取当前会话
         const { data: { session } } = await supabase.auth.getSession();
         const currentUser = session?.user ?? null;
         setUser(currentUser);
+        setInitialized(true);
 
         if (currentUser) {
+          console.log('Initial auth - user found:', currentUser.id);
           // 用户已登录，获取卡片
           await fetchCardsForUser(currentUser.id);
         } else {
+          console.log('Initial auth - no user found');
           // 用户未登录，设置初始状态
           setCards([]);
           setLoading(false);
@@ -33,6 +38,7 @@ export const useSupabaseCards = () => {
         setCards([]);
         setLoading(false);
         setError('初始化失败，请刷新页面');
+        setInitialized(true);
       }
     };
 
@@ -42,12 +48,13 @@ export const useSupabaseCards = () => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         const currentUser = session?.user ?? null;
+        console.log('Auth state changed:', event, currentUser?.email);
         setUser(currentUser);
         
-        if (currentUser) {
-          // 用户登录，获取卡片
+        if (currentUser && initialized) {
+          // 用户登录且已初始化，获取卡片
           await fetchCardsForUser(currentUser.id);
-        } else {
+        } else if (!currentUser) {
           // 用户登出，清空数据
           setCards([]);
           setLoading(false);
@@ -56,8 +63,11 @@ export const useSupabaseCards = () => {
       }
     );
 
-    return () => subscription.unsubscribe();
-  }, []);
+    return () => {
+      console.log('Cleaning up auth subscription');
+      subscription.unsubscribe();
+    };
+  }, [initialized]);
 
   // 获取用户卡片
   const fetchCardsForUser = async (userId: string) => {
