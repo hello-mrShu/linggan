@@ -14,36 +14,52 @@ export const useSupabaseCards = () => {
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        setUser(session?.user ?? null);
-        if (session?.user) {
-          await fetchCards();
+        const currentUser = session?.user ?? null;
+        setUser(currentUser);
+        
+        if (currentUser) {
+          // 用户已登录，获取卡片
+          await fetchCardsForUser(currentUser.id);
         } else {
+          // 用户已登出，清空状态
           setCards([]);
           setLoading(false);
+          setError(null);
         }
       }
     );
+
+    // 初始检查认证状态
+    const initializeAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          setUser(session.user);
+          await fetchCardsForUser(session.user.id);
+        } else {
+          setLoading(false);
+        }
+      } catch (error) {
+        console.error('Auth initialization error:', error);
+        setLoading(false);
+      }
+    };
+
+    initializeAuth();
 
     return () => subscription.unsubscribe();
   }, []);
 
   // 获取用户卡片
-  const fetchCards = async () => {
+  const fetchCardsForUser = async (userId: string) => {
     try {
       setLoading(true);
       setError(null);
 
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        setCards([]);
-        setLoading(false);
-        return;
-      }
-
       const { data, error } = await supabase
         .from('inspiration_cards')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('user_id', userId)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -63,6 +79,14 @@ export const useSupabaseCards = () => {
       console.error('Error fetching cards:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // 向后兼容的函数
+  const fetchCards = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      await fetchCardsForUser(user.id);
     }
   };
 
