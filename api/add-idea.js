@@ -67,15 +67,18 @@ module.exports = async (req, res) => {
       });
     }
 
-    // 创建一个临时的RLS绕过策略
-    // 注意：这是一个临时解决方案，生产环境需要更好的API认证
-    const { data, error } = await supabase.rpc('insert_card_for_api', {
-      p_user_id: DEFAULT_USER_ID,
-      p_title: content.trim(),
-      p_content: null,
-      p_category: category,
-      p_image_url: imageUrl || null
-    });
+    // 插入数据到数据库（RLS策略会验证Authorization header）
+    const { data, error } = await supabase
+      .from('inspiration_cards')
+      .insert({
+        user_id: DEFAULT_USER_ID,
+        title: content.trim(),
+        content: null, // 快捷指令只传入标题
+        category: category,
+        image_url: imageUrl || null,
+      })
+      .select()
+      .single();
 
     if (error) {
       console.error('Database error:', error);
