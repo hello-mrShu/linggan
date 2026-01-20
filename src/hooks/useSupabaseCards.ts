@@ -10,42 +10,51 @@ export const useSupabaseCards = () => {
   const [error, setError] = useState<string | null>(null);
   const [user, setUser] = useState<any>(null);
 
-  // 监听认证状态
+  // 获取当前认证状态和卡片数据
   useEffect(() => {
+    const initializeData = async () => {
+      try {
+        // 获取当前会话
+        const { data: { session } } = await supabase.auth.getSession();
+        const currentUser = session?.user ?? null;
+        setUser(currentUser);
+
+        if (currentUser) {
+          // 用户已登录，获取卡片
+          await fetchCardsForUser(currentUser.id);
+        } else {
+          // 用户未登录，设置初始状态
+          setCards([]);
+          setLoading(false);
+          setError(null);
+        }
+      } catch (error) {
+        console.error('Initialization error:', error);
+        setCards([]);
+        setLoading(false);
+        setError('初始化失败，请刷新页面');
+      }
+    };
+
+    initializeData();
+
+    // 监听认证状态变化
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         const currentUser = session?.user ?? null;
         setUser(currentUser);
         
         if (currentUser) {
-          // 用户已登录，获取卡片
+          // 用户登录，获取卡片
           await fetchCardsForUser(currentUser.id);
         } else {
-          // 用户已登出，清空状态
+          // 用户登出，清空数据
           setCards([]);
           setLoading(false);
           setError(null);
         }
       }
     );
-
-    // 初始检查认证状态
-    const initializeAuth = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user) {
-          setUser(session.user);
-          await fetchCardsForUser(session.user.id);
-        } else {
-          setLoading(false);
-        }
-      } catch (error) {
-        console.error('Auth initialization error:', error);
-        setLoading(false);
-      }
-    };
-
-    initializeAuth();
 
     return () => subscription.unsubscribe();
   }, []);
@@ -62,9 +71,12 @@ export const useSupabaseCards = () => {
         .eq('user_id', userId)
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Database error:', error);
+        throw error;
+      }
 
-      const transformedCards: InspirationCard[] = data.map((card: CardRow) => ({
+      const transformedCards: InspirationCard[] = (data || []).map((card: CardRow) => ({
         id: card.id,
         title: card.title,
         content: card.content || undefined,
@@ -74,9 +86,11 @@ export const useSupabaseCards = () => {
       }));
 
       setCards(transformedCards);
+      console.log('Cards loaded:', transformedCards.length, 'for user:', userId);
     } catch (err: any) {
-      setError(err.message);
       console.error('Error fetching cards:', err);
+      setError('获取数据失败: ' + err.message);
+      setCards([]);
     } finally {
       setLoading(false);
     }
