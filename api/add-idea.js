@@ -8,6 +8,10 @@ const apiAuthToken = process.env.API_AUTH_TOKEN;
 // 初始化Supabase客户端
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
+// 硬编码的用户ID（你需要替换为你的实际用户ID）
+// 获取方法：在应用中登录后，控制台执行 console.log(supabase.auth.user().id)
+const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000000'; // 替换为实际ID
+
 // 验证分类有效性
 const validCategories = ['inspiration', 'practice', 'memo'];
 
@@ -55,28 +59,9 @@ module.exports = async (req, res) => {
       });
     }
 
-    // 查找用户ID（基于邮箱）
-    let userId;
-    if (userEmail) {
-      const { data: { users }, error } = await supabase.auth.admin.listUsers();
-      if (error) {
-        console.error('Error fetching users:', error);
-        return res.status(500).json({ error: '获取用户信息失败' });
-      }
-
-      const user = users.find(u => u.email === userEmail);
-      if (!user) {
-        return res.status(404).json({ error: '用户不存在' });
-      }
-      userId = user.id;
-    } else {
-      // 如果没有提供邮箱，使用第一个用户（单用户模式）
-      const { data: { users }, error } = await supabase.auth.admin.listUsers();
-      if (error || users.length === 0) {
-        return res.status(500).json({ error: '没有找到用户' });
-      }
-      userId = users[0].id;
-    }
+    // 使用硬编码的用户ID（简化版本）
+    // 生产环境中，你可以通过邮箱查询用户或使用更复杂的认证
+    const userId = DEFAULT_USER_ID;
 
     // 插入数据到数据库
     const { data, error } = await supabase
