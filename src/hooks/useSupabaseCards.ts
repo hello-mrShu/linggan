@@ -1,25 +1,17 @@
-import { useState, useEffect, useCallback } from 'react';
-import { supabase, Database } from '../supabase';
+import { useState, useEffect } from 'react';
+import { supabase } from '../supabase';
 import { InspirationCard } from '../types';
-
-type CardRow = Database['public']['Tables']['inspiration_cards']['Row'];
 
 export const useSupabaseCards = () => {
   const [cards, setCards] = useState<InspirationCard[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [user, setUser] = useState<any>(null);
-  const [loadingCards, setLoadingCards] = useState(false);
 
   // 获取用户卡片
-  const fetchCardsForUser = useCallback(async (userId: string) => {
-    if (loadingCards) {
-      console.log('Cards loading in progress, skipping...');
-      return;
-    }
-    
+  const fetchCards = async (userId: string) => {
     try {
-      setLoadingCards(true);
+      setLoading(true);
       setError(null);
 
       const { data, error } = await supabase
@@ -33,7 +25,7 @@ export const useSupabaseCards = () => {
         throw error;
       }
 
-      const transformedCards: InspirationCard[] = (data || []).map((card: CardRow) => ({
+      const transformedCards: InspirationCard[] = (data || []).map((card: any) => ({
         id: card.id,
         title: card.title,
         content: card.content || undefined,
@@ -49,51 +41,46 @@ export const useSupabaseCards = () => {
       setError('获取数据失败: ' + err.message);
       setCards([]);
     } finally {
-      setLoadingCards(false);
       setLoading(false);
     }
-  }, [loadingCards]);
+  };
 
-  // 获取当前认证状态和卡片数据
+  // 检查初始认证状态
   useEffect(() => {
-    let isSubscribed = true;
-    
-    const initializeData = async () => {
-      if (!isSubscribed) return;
-      
+    const initializeAuth = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
-        const currentUser = session?.user ?? null;
-        setUser(currentUser);
-
-        if (currentUser) {
-          console.log('Initial auth - user found:', currentUser.id);
-          await fetchCardsForUser(currentUser.id);
+        console.log('Session check:', session?.user?.email);
+        
+        if (session?.user) {
+          setUser(session.user);
+          await fetchCards(session.user.id);
         } else {
-          console.log('Initial auth - no user found');
+          setUser(null);
           setCards([]);
           setLoading(false);
-          setError(null);
         }
       } catch (error) {
-        console.error('Initialization error:', error);
+        console.error('Auth initialization error:', error);
+        setUser(null);
         setCards([]);
         setLoading(false);
-        setError('初始化失败，请刷新页面');
+        setError('认证初始化失败');
       }
     };
 
+    initializeAuth();
+
+    // 简单的认证状态监听
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        if (!isSubscribed) return;
+        console.log('Auth event:', event, session?.user?.email);
         
-        const currentUser = session?.user ?? null;
-        console.log('Auth state changed:', event, currentUser?.email);
-        setUser(currentUser);
-        
-        if (currentUser) {
-          await fetchCardsForUser(currentUser.id);
-        } else {
+        if (event === 'SIGNED_IN' && session?.user) {
+          setUser(session.user);
+          await fetchCards(session.user.id);
+        } else if (event === 'SIGNED_OUT') {
+          setUser(null);
           setCards([]);
           setLoading(false);
           setError(null);
@@ -101,17 +88,16 @@ export const useSupabaseCards = () => {
       }
     );
 
-    initializeData();
-
     return () => {
-      console.log('Cleaning up auth subscription');
-      isSubscribed = false;
+      console.log('Unsubscribing from auth changes');
       subscription.unsubscribe();
     };
-  }, [fetchCardsForUser]);
+  }, []);
 
   // 添加新卡片
   const addCard = async (newCard: Omit<InspirationCard, 'id' | 'timestamp'>) => {
+    if (!user) throw new Error('用户未登录');
+    
     try {
       const { data, error } = await supabase
         .from('inspiration_cards')
@@ -126,7 +112,18 @@ export const useSupabaseCards = () => {
         .single();
 
       if (error) throw error;
-      return data;
+      
+      const transformedCard: InspirationCard = {
+        id: data.id,
+        title: data.title,
+        content: data.content || undefined,
+        category: data.category,
+        imageUrl: data.image_url || undefined,
+        timestamp: new Date(data.created_at),
+      };
+
+      setCards(prev => [transformedCard, ...prev]);
+      return transformedCard;
     } catch (err: any) {
       setError(err.message);
       console.error('Error adding card:', err);
@@ -161,6 +158,7 @@ export const useSupabaseCards = () => {
       });
 
       if (error) throw error;
+      setUser(data.user);
       return data;
     } catch (err: any) {
       setError(err.message);
@@ -191,6 +189,11 @@ export const useSupabaseCards = () => {
     try {
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
+      
+      setUser(null);
+      setCards([]);
+      setLoading(false);
+      setError(null);
     } catch (err: any) {
       setError(err.message);
       console.error('Error signing out:', err);
