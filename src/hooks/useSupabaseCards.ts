@@ -71,7 +71,7 @@ export const useSupabaseCards = () => {
 
     initializeAuth();
 
-    // 简单的认证状态监听
+    // 改进的认证状态监听
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         console.log('Auth event:', event, session?.user?.email);
@@ -84,6 +84,9 @@ export const useSupabaseCards = () => {
           setCards([]);
           setLoading(false);
           setError(null);
+        } else if (event === 'TOKEN_REFRESHED') {
+          // Token刷新，保持当前登录状态
+          console.log('Token refreshed, maintaining current auth state');
         }
       }
     );
@@ -201,6 +204,18 @@ export const useSupabaseCards = () => {
     }
   };
 
+  // 手动重试加载
+  const retryLoad = async () => {
+    if (user) {
+      console.log('Manual retry: attempting to reload cards');
+      try {
+        await fetchCards(user.id);
+      } catch (error) {
+        console.error('Retry failed:', error);
+      }
+    }
+  };
+
   return {
     cards,
     loading,
@@ -211,5 +226,6 @@ export const useSupabaseCards = () => {
     signIn,
     signUp,
     signOut,
+    retryLoad,
   };
 };
