@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import Header from './components/Header';
 import Card from './components/Card';
 import Navigation from './components/Navigation';
@@ -7,7 +7,6 @@ import AddCardModal from './components/AddCardModal';
 import AuthModal from './components/AuthModal';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { useSupabaseCards } from './hooks/useSupabaseCards';
-import { InspirationCard } from './types';
 import './index.css';
 
 function AppContent() {
@@ -23,10 +22,10 @@ function AppContent() {
     error 
   } = useSupabaseCards();
   
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [activeTab, setActiveTab] = useState<string>('inspiration');
-  const [showAddModal, setShowAddModal] = useState<boolean>(false);
-  const [showAuthModal, setShowAuthModal] = useState<boolean>(false);
+  const [selectedCategory, setSelectedCategory] = React.useState<string>('all');
+  const [activeTab, setActiveTab] = React.useState<string>('inspiration');
+  const [showAddModal, setShowAddModal] = React.useState<boolean>(false);
+  const [showAuthModal, setShowAuthModal] = React.useState<boolean>(false);
 
   const filteredCards = selectedCategory === 'all' 
     ? cards 
@@ -36,9 +35,10 @@ function AppContent() {
     setShowAddModal(true);
   };
 
-  const handleAddNewCard = async (newCard: Omit<InspirationCard, 'id' | 'timestamp'>) => {
+  const handleAddNewCard = async (newCard: any) => {
     try {
       await addCard(newCard);
+      setShowAddModal(false);
     } catch (error) {
       console.error('添加卡片失败:', error);
     }
@@ -53,17 +53,29 @@ function AppContent() {
   };
 
   const handleLogin = async (email: string, password: string) => {
-    await signIn(email, password);
-    setShowAuthModal(false);
+    try {
+      await signIn(email, password);
+      setShowAuthModal(false);
+    } catch (error) {
+      console.error('登录失败:', error);
+    }
   };
 
   const handleSignup = async (email: string, password: string) => {
-    await signUp(email, password);
-    setShowAuthModal(false);
+    try {
+      await signUp(email, password);
+      setShowAuthModal(false);
+    } catch (error) {
+      console.error('注册失败:', error);
+    }
   };
 
   const handleLogout = async () => {
-    await signOut();
+    try {
+      await signOut();
+    } catch (error) {
+      console.error('登出失败:', error);
+    }
   };
 
   return (
@@ -77,22 +89,20 @@ function AppContent() {
       />
       
       <main className="px-6 py-2 space-y-6 pb-24">
-        {loading ? (
+        {loading && (
           <div className="text-center py-12">
             <div className="inline-block w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
             <p className="text-slate-400 dark:text-slate-500 mt-2">加载中...</p>
           </div>
-        ) : error ? (
+        )}
+        
+        {error && (
           <div className="text-center py-12">
-            <p className="text-red-500 dark:text-red-400">加载失败: {error}</p>
-            <button 
-              onClick={() => window.location.reload()} 
-              className="mt-2 text-primary hover:text-primary/80"
-            >
-              重新加载
-            </button>
+            <p className="text-red-500 dark:text-red-400">错误: {error}</p>
           </div>
-        ) : !user ? (
+        )}
+        
+        {!loading && !error && !user && (
           <div className="text-center py-12">
             <p className="text-slate-400 dark:text-slate-500 text-lg mb-4">
               请登录以查看和管理您的灵感卡片
@@ -104,7 +114,9 @@ function AppContent() {
               立即登录
             </button>
           </div>
-        ) : (
+        )}
+        
+        {!loading && !error && user && (
           <>
             {filteredCards.map((card) => (
               <Card key={card.id} card={card} onDelete={handleDeleteCard} />

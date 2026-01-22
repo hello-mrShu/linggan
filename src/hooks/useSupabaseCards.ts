@@ -8,8 +8,72 @@ export const useSupabaseCards = () => {
   const [error, setError] = useState<string | null>(null);
   const [user, setUser] = useState<any>(null);
 
-  // 获取用户卡片
-  const fetchCards = async (userId: string) => {
+
+
+  // 简单的认证检查
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          console.log('User session found:', session.user.email);
+          setUser(session.user);
+          
+          // 只有在未初始化时才加载卡片
+          if (!isInitialized) {
+            await loadCards(session.user.id);
+            setIsInitialized(true);
+          }
+        } else {
+          console.log('No user session found');
+          setUser(null);
+          setCards([]);
+          setLoading(false);
+          setIsInitialized(true);
+        }
+      } catch (error) {
+        console.error('Auth check failed:', error);
+        setError('认证检查失败');
+        setCards([]);
+        setLoading(false);
+        setIsInitialized(true);
+      }
+    };
+
+    checkAuth();
+
+    // 监听认证状态变化，但减少不必要的重新加载
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        console.log('Auth state event:', event, 'user:', session?.user?.email);
+        
+        if (event === 'SIGNED_IN' && session?.user) {
+          console.log('User signed in:', session.user.email);
+          setUser(session.user);
+          if (!isInitialized) {
+            await loadCards(session.user.id);
+            setIsInitialized(true);
+          }
+        } else if (event === 'SIGNED_OUT') {
+          console.log('User signed out');
+          setUser(null);
+          setCards([]);
+          setLoading(false);
+        } else if (event === 'TOKEN_REFRESHED') {
+          console.log('Token refreshed for:', session?.user?.email);
+          // 保持当前状态，不重新加载
+        }
+      }
+    );
+
+    return () => {
+      console.log('Cleaning up auth subscription');
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  // 加载卡片数据
+  const loadCards = async (userId: string) => {
     try {
       setLoading(true);
       setError(null);
@@ -35,67 +99,15 @@ export const useSupabaseCards = () => {
       }));
 
       setCards(transformedCards);
-      console.log('Cards loaded:', transformedCards.length, 'for user:', userId);
+      console.log('Cards loaded successfully:', transformedCards.length);
     } catch (err: any) {
-      console.error('Error fetching cards:', err);
-      setError('获取数据失败: ' + err.message);
+      console.error('Error loading cards:', err);
+      setError('数据加载失败');
       setCards([]);
     } finally {
       setLoading(false);
     }
   };
-
-  // 检查初始认证状态
-  useEffect(() => {
-    const initializeAuth = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        console.log('Session check:', session?.user?.email);
-        
-        if (session?.user) {
-          setUser(session.user);
-          await fetchCards(session.user.id);
-        } else {
-          setUser(null);
-          setCards([]);
-          setLoading(false);
-        }
-      } catch (error) {
-        console.error('Auth initialization error:', error);
-        setUser(null);
-        setCards([]);
-        setLoading(false);
-        setError('认证初始化失败');
-      }
-    };
-
-    initializeAuth();
-
-    // 改进的认证状态监听
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        console.log('Auth event:', event, session?.user?.email);
-        
-        if (event === 'SIGNED_IN' && session?.user) {
-          setUser(session.user);
-          await fetchCards(session.user.id);
-        } else if (event === 'SIGNED_OUT') {
-          setUser(null);
-          setCards([]);
-          setLoading(false);
-          setError(null);
-        } else if (event === 'TOKEN_REFRESHED') {
-          // Token刷新，保持当前登录状态
-          console.log('Token refreshed, maintaining current auth state');
-        }
-      }
-    );
-
-    return () => {
-      console.log('Unsubscribing from auth changes');
-      subscription.unsubscribe();
-    };
-  }, []);
 
   // 添加新卡片
   const addCard = async (newCard: Omit<InspirationCard, 'id' | 'timestamp'>) => {
@@ -128,14 +140,15 @@ export const useSupabaseCards = () => {
       setCards(prev => [transformedCard, ...prev]);
       return transformedCard;
     } catch (err: any) {
-      setError(err.message);
-      console.error('Error adding card:', err);
+      setError('添加卡片失败');
       throw err;
     }
   };
 
   // 删除卡片
   const deleteCard = async (id: string) => {
+    if (!user) throw new Error('用户未登录');
+    
     try {
       const { error } = await supabase
         .from('inspiration_cards')
@@ -143,11 +156,11 @@ export const useSupabaseCards = () => {
         .eq('id', id);
 
       if (error) throw error;
-
+      
       setCards(prev => prev.filter(card => card.id !== id));
+      console.log('Card deleted successfully:', id);
     } catch (err: any) {
-      setError(err.message);
-      console.error('Error deleting card:', err);
+      setError('删除卡片失败');
       throw err;
     }
   };
@@ -161,11 +174,12 @@ export const useSupabaseCards = () => {
       });
 
       if (error) throw error;
+      
       setUser(data.user);
+      console.log('User signed in successfully:', email);
       return data;
     } catch (err: any) {
-      setError(err.message);
-      console.error('Error signing in:', err);
+      setError('登录失败');
       throw err;
     }
   };
@@ -179,10 +193,11 @@ export const useSupabaseCards = () => {
       });
 
       if (error) throw error;
+      
+      console.log('User signed up successfully:', email);
       return data;
     } catch (err: any) {
-      setError(err.message);
-      console.error('Error signing up:', err);
+      setError('注册失败');
       throw err;
     }
   };
@@ -197,22 +212,11 @@ export const useSupabaseCards = () => {
       setCards([]);
       setLoading(false);
       setError(null);
+      setIsInitialized(false);
+      console.log('User signed out successfully');
     } catch (err: any) {
-      setError(err.message);
-      console.error('Error signing out:', err);
+      setError('登出失败');
       throw err;
-    }
-  };
-
-  // 手动重试加载
-  const retryLoad = async () => {
-    if (user) {
-      console.log('Manual retry: attempting to reload cards');
-      try {
-        await fetchCards(user.id);
-      } catch (error) {
-        console.error('Retry failed:', error);
-      }
     }
   };
 
@@ -226,6 +230,5 @@ export const useSupabaseCards = () => {
     signIn,
     signUp,
     signOut,
-    retryLoad,
   };
 };
